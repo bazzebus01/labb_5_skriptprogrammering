@@ -38,18 +38,20 @@ def get_current_categories(url):
 app = Flask(__name__)
 BASE_URL = 'https://books.toscrape.com/'
 
-@app.route('/catalogue/category/books/<string:category_url>', methods=['GET'])
+#@app.route('/catalogue/category/books/<string:category_url>', methods=['GET'])
 def get_category_data(category_url): # Baserat på HTTP GET/CRUD som är WIP. Exempel: fantasy, historical_fiction. Bör matcha namnen från hemsidan
-    category_title = re.sub(r'[a-zA-Z_]', '', category_url)# ta bort _xx!!!!
+    category_title = re.sub(r'[^a-zA-Z_]', '', category_url)# ta bort _xx!!!!
     today = datetime.now().strftime('%d%m%y') # Example: 190226
     file_name = f'{category_title}_{today}.json'.replace(' ', '_').lower() # Example: 'fantasy_190226.json'
 
+    # FUNC Load cached data
     if os.path.exists(file_name):
         with open(file_name, 'r', encoding='utf-8') as json_file:
             data = json.load(json_file)
             source = 'local_db'
         return jsonify({'source': source, 'data': data})
 
+    # FUNC Live web scraping, 404 logik error här ngnstans
     else:
         all_categories = get_current_categories(BASE_URL)[1:] # Retrieves all categories, starting at 1 because 'books' isn't a category
         matched_url = None # Sets it to None by default
@@ -64,6 +66,7 @@ def get_category_data(category_url): # Baserat på HTTP GET/CRUD som är WIP. Ex
         scraped_data = []
         current_page = matched_url
 
+        # FUNC PAGE ITERATION
         while current_page: # Loop that continues as long as there is a next page
             response = requests.get(current_page)
             if response.status_code != 200:
@@ -76,6 +79,8 @@ def get_category_data(category_url): # Baserat på HTTP GET/CRUD som är WIP. Ex
             category_name = soup.find('div', class_='page-header action').text.strip() # Finds category title, example 'Fantasy'
             print(f'Fetching category: {category_name}...')
 
+
+            # FUNC BOOK ITERATION
             for book in books:
                 rel_link = book.find('a')['href']
                 rel_link_formatted = rel_link.replace('../', '').replace('../../', '').replace('../../../', '') # Formats the relative link to work with the base URL
@@ -111,7 +116,7 @@ def get_category_data(category_url): # Baserat på HTTP GET/CRUD som är WIP. Ex
                 # For clarity in output:
                 print(f'Fetched book: {book_title}')
 
-            # Page checker
+            # FUNC PAGE CHECKER & SAVER
             next_page_link = soup.find('li', class_='next')
             if next_page_link: # If there are more pages in the category
                 next_page_link = soup.find('li', class_='next').find('a')['href']
@@ -126,7 +131,6 @@ def get_category_data(category_url): # Baserat på HTTP GET/CRUD som är WIP. Ex
                 current_page = None # Breaks out of the while loop at the last page
         return jsonify({'source': 'live_web_scraping', 'data': scraped_data})
     
-
 
 if __name__ == '__main__':
     app.run(debug=True)
