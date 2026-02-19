@@ -1,25 +1,7 @@
 import os, requests, json
 from flask import Flask, jsonify
 from bs4 import BeautifulSoup
-"""
-app = Flask(__name__)
-PROGRAM_CACHE_FILE = 'x.json' # WIP
 
-@app.route('/program_cache')
-def program_cache():
-    if os.path.exists(PROGRAM_CACHE_FILE): # Om filen finns, bör vara datum- och kategori-känsligt
-        with open(PROGRAM_CACHE_FILE, 'r', encoding='utf-8') as cache_file:
-            data = json.load(cache_file)
-            source = 'cached_file' # WIP
-        return jsonify(data)
-    else: # Live webscraping
-        scraped_data = 1 # scraped_data() # WIP
-        source = 'live_web_scraping'
-        if scraped_data:
-            with open(PROGRAM_CACHE_FILE, 'w', encoding='utf-8') as cache_file:
-                json.dump(scraped_data, cache_file, ensure_ascii=False, indent=4)
-        return jsonify(cache_file) 
-"""    
 def get_category_data():
     if os.path.exists('kategori_årmånaddag.json'): # Structure dynamic name later
         with open('kategori_årmånaddag.json', 'r', encoding='utf-8') as json_file:
@@ -61,7 +43,6 @@ def get_category_data():
                 json.dump(scraped_data, json_file, ensure_ascii=False, indent=4)
             return jsonify(scraped_data, source)
 
-#----------------trulsas kod---------------------
 
 def get_current_categories(url):
     response = requests.get(url)
@@ -71,4 +52,14 @@ def get_current_categories(url):
     return [a['href'] for a in 
             ul_element.find_all('a')]
 
-print(get_current_categories("https://books.toscrape.com/index.html"))
+def print_all_books_in_cat(url):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    books = soup.find('article', class_='product_pod')
+
+    print(books)
+
+
+print(print_all_books_in_cat("https://books.toscrape.com/catalogue/category/books/add-a-comment_18/"))
+
+
