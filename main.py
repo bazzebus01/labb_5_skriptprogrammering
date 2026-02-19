@@ -1,5 +1,5 @@
 import os, requests, json, re
-from flask import Flask, jsonify
+from flask import Flask, jsonify, app
 from bs4 import BeautifulSoup
 from datetime import datetime
 import time
@@ -30,15 +30,17 @@ def get_current_categories(url):
     ul_element = soup.find('ul', class_='nav nav-list')
 
     return [a['href'] for a in 
-            ul_element.find_all('a')] # Ta bort första instansen? den verkar vara 'books' som inte är en kategori utan alla böcker
-# Skulle även behöva ksk både vanlig titel och url-en (precis som den är nu) för att göra dynamisk json
+            ul_element.find_all('a')]
 
 
 #--- Ellas kod ---
+
+app = Flask(__name__)
 BASE_URL = 'https://books.toscrape.com/'
 
+@app.route('/catalogue/category/books/<string:category_url>', methods=['GET'])
 def get_category_data(category_url): # Baserat på HTTP GET/CRUD som är WIP. Exempel: fantasy, historical_fiction. Bör matcha namnen från hemsidan
-    category_title = category_url
+    category_title = re.sub(r'[a-zA-Z_]', '', category_url)# ta bort _xx!!!!
     today = datetime.now().strftime('%d%m%y') # Example: 190226
     file_name = f'{category_title}_{today}.json'.replace(' ', '_').lower() # Example: 'fantasy_190226.json'
 
@@ -71,8 +73,8 @@ def get_category_data(category_url): # Baserat på HTTP GET/CRUD som är WIP. Ex
             soup = BeautifulSoup(data, 'html.parser')
             books = soup.find_all('article', class_='product_pod') # Finds all books in the category's current page
 
-            category_title = soup.find('div', class_='page-header action').text.strip() # Finds category title, example 'Fantasy'
-            print(f'Fetching category: {category_title}...')
+            category_name = soup.find('div', class_='page-header action').text.strip() # Finds category title, example 'Fantasy'
+            print(f'Fetching category: {category_name}...')
 
             for book in books:
                 rel_link = book.find('a')['href']
@@ -117,9 +119,14 @@ def get_category_data(category_url): # Baserat på HTTP GET/CRUD som är WIP. Ex
                 current_page = base_folder + next_page_link # Dynamic link for the next page in the category
             else:
                 print(f'Finished fetching category: {category_title}. Saving...')
+                file_name = f'{category_title}_{today}.json'.replace(' ', '_').lower()
+                with open(file_name, 'w', encoding='utf-8') as json_file:
+                    json.dump(scraped_data, json_file, ensure_ascii=False, indent=4)
+                print('Saved!')
                 current_page = None # Breaks out of the while loop at the last page
+        return jsonify({'source': 'live_web_scraping', 'data': scraped_data})
+    
 
-            with open(file_name, 'w', encoding='utf-8') as json_file:
-                json.dump(scraped_data, json_file, ensure_ascii=False, indent=4)
-            print('Saved!')
-get_category_data()
+
+if __name__ == '__main__':
+    app.run(debug=True)
