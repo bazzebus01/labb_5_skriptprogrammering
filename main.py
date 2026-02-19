@@ -60,3 +60,15 @@ def get_category_data():
             with open('kategori_årmånaddag.json', 'w', encoding='utf-8') as json_file: # Dynamisk filnamn, skapa upp nytt ska den göra också
                 json.dump(scraped_data, json_file, ensure_ascii=False, indent=4)
             return jsonify(scraped_data, source)
+
+#----------------trulsas kod---------------------
+
+def get_current_categories(url):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    ul_element = soup.find('ul', class_='nav nav-list')
+
+    return [a['href'] for a in 
+            ul_element.find_all('a')]
+
+print(get_current_categories("https://books.toscrape.com/index.html"))
