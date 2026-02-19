@@ -3,15 +3,8 @@ from flask import jsonify, Flask
 from bs4 import BeautifulSoup
 import requests
 import json
+from Blueprints import book_db_bp
 
 app = Flask(__name__)
-PROGRAM_CACHE_FILE = 'kategorinamn_årmånaddag.json'
-
-@app.route('/program_cache')
-def program_cache():
-    if os.path.exists(PROGRAM_CACHE_FILE):
-        with open(PROGRAM_CACHE_FILE, 'r') as f:
-            data = json.load(f)
-        return jsonify(data)
-    else:
-        return jsonify({"error": "Cache file not found"}), 404
+app.json.ensure_ascii = False
+app.register_blueprint(book_db_bp, url_prefix='/get_books')
