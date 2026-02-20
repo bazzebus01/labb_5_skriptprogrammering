@@ -1,9 +1,9 @@
 import os, requests, json, re
 from flask import Flask, jsonify, Blueprint
 from bs4 import BeautifulSoup
-from datetime import datetime
+import datetime
 
-# Blueprint, innit?
+# Blueprint init
 books_bp = Blueprint('books_bp', __name__)
 
 # URL things
@@ -32,7 +32,6 @@ def page_turner():
 
 # Fetches all links for categories, stores in list
 def get_categories():
-
     ul_element = soup.find('ul', class_='nav nav-list')
 
     list_of_links = [a['href'] for a in ul_element.find_all('a')]
@@ -40,28 +39,49 @@ def get_categories():
 
     for link in list_of_links:
         print(link)
+    return list_of_links
+
+def dynamic_file_name(category):
+    # Creates a JSON file name based on the current category and name
+    today = datetime.date.today().strftime('%d%m%y')
+    file_name = category + '_' + today + '.json'
+    return file_name # Returns 'category_ddmmyy.json' as string
 
 def price_conversion():
     pass
 
-def rating_conversion():
-    pass
+def rating_conversion(book_rating):
+    # Book rating conversion table
+    rating_conversion = {
+        'One': '1/5',
+        'Two': '2/5',
+        'Three': '3/5',
+        'Four': '4/5',
+        'Five': '5/5'
+    }
+    return rating_conversion.get(book_rating) # Returns '0-5/5' as string
 
 # --- Book Fetching !!! ---
-# Fetches the book title for a category. Iterates for every book in a different function
+# Fetches the book title in a category
 def book_name(URL):
     html_code = requests.get(URL)
     soup_local = BeautifulSoup(html_code.text, 'html.parser')
 
     book_data = soup_local.find('article', class_='product_pod')
     book_title = book_data.h3.a.get('title')
-    print(book_title)
+    print(book_title) # Bör bytas till return //Ella
 
 def book_price():
     pass
 
-def book_rating():
-    pass
+def book_rating(url):
+    # Fetches category URL, then fetches rating and converts it to 0-5/5
+    html_code = requests.get(url)
+    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+
+    book_rating_unconverted = soup_local.find('p', class_='star-rating')['class'][1] # Finds the second class attribute wherever it also contains 'star-rating'
+    book_rating = rating_conversion(book_rating_unconverted)
+    return book_rating # Returns '0-5/5' as string
 
 def book_id(): # Book UPC
     pass
@@ -73,8 +93,17 @@ def gather_book_data():
 def load_json_file():
     pass
 
-def save_books_to_json():
-    pass
+def save_books_to_json(category): # WILL WORK when gather_book_data() works!! //Ella
+    # Saves the book data from a category into a new JSON file
+    file_name = dynamic_file_name(category)
+    book_data = gather_book_data() # MAY NEED ADJUSTING //Ella
+    if not os.path.exists(f'{file_name}.json'):
+        try:
+            with open(file_name, 'w', encoding='utf-8') as json_file:
+                json.dump(book_data, json_file, ensure_ascii=False, indent=4)
+            return book_data # Returns all book data as a list with dicts within
+        except Exception as err:
+            return('Unable to create JSON file.'), err
 
 # --- HTTP Methods ---
 # Route krävs, GET
@@ -84,15 +113,31 @@ def dynamic_file_name_checker(): # Temp name
     # Hämta sedan info om alla böcker utefter kategorin.
     pass
 
-# Route krävs, GET ID
-def dynamic_book_id_checker(): # Temp name
-    # Kollar baserat på ID och kategori. Bör också kolla lokalt i första hand, annars webscrape-a.
-    # Kolla: Finns kategorin? om ja, Finns den lokalt? om nej, webscrape-a.
-    # Hämta sedan info om boken utefter UPC (ID)
-    pass
+# Untested, needs function gather_book_data() to test. Assumes our route category is formatted 'fantasy', 'historical-fiction' etc.
+@books_bp.route('/books/<string:category>/<string:id>', methods=['GET'])
+def get_book_by_id(category, id):
+    # Fetches a book within a category by ID
+    categories = get_categories()
+    if not any(f'/{category}_' in link for link in categories): # "If there isn't any '(category)_' in *any* link inside categories"
+        return jsonify({'error': f'Category {category} not found.'}), 404    
+    
+    # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
+    file_name = dynamic_file_name(category)
+    if not os.path.exists(file_name):
+        save_books_to_json(category)
 
+    if not os.path.exists(file_name): # Checks again to make sure the file was created correctly
+        return jsonify({'error': 'Failed to create JSON file.'}), 500
+    
+    with open(file_name, 'r', encoding='utf-8') as json_file: # Should later be load_json_data()
+        book_data = json.load(json_file)
 
-
+    for book in book_data: # Searches for an ID match, returns book information
+        if book['id'] == id:
+            print('Book found!') # FYI, this only prints to console //Ella
+            return jsonify(book)
+    
+    return jsonify({'error': f'Book with ID/UPC {id} not found.'}), 404
 
 
 
@@ -109,4 +154,3 @@ def print_all_books(URL):
         book_title = books[book].article.h3.a.get('title')
         print(book_title)
 
-print_all_books('https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html')
