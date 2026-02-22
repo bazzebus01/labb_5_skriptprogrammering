@@ -61,6 +61,8 @@ def rating_conversion(book_rating):
     }
     return rating_conversion.get(book_rating) # Returns '0-5/5' as string
 
+
+
 # --- Book Fetching !!! ---
 # Fetches the book title in a category
 def book_name(URL):
@@ -69,13 +71,13 @@ def book_name(URL):
 
     book_data = soup_local.find('article', class_='product_pod')
     book_title = book_data.h3.a.get('title')
-    print(book_title) # Bör bytas till return //Ella
+    return book_title
 
 def book_price():
     pass
 
+# Fetches category URL, then fetches rating and converts it to 0-5/5
 def book_rating(url):
-    # Fetches category URL, then fetches rating and converts it to 0-5/5
     html_code = requests.get(url)
     soup_local = BeautifulSoup(html_code.text, 'html.parser')
 
@@ -83,11 +85,23 @@ def book_rating(url):
     book_rating = rating_conversion(book_rating_unconverted)
     return book_rating # Returns '0-5/5' as string
 
-def book_id(): # Book UPC
-    pass
+
+#fetches book UPC with the direct url to the book
+def book_id(url):
+    html_code = requests.get(url)
+    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+
+    product_info = soup_local.find('table', class_='table table-striped') #finds the contents of the product information table
+    id = product_info.tr.td.get_text(strip=True) #collects the text in the first row second column
+    return id
+
 
 def gather_book_data():
+
+# need logic to get the direct link to the book for book_id //sebastian
     pass
+
+
 
 # --- JSON Handling ---
 def load_json_file():
@@ -105,12 +119,15 @@ def save_books_to_json(category): # WILL WORK when gather_book_data() works!! //
         except Exception as err:
             return('Unable to create JSON file.'), err
 
+
+
 # --- HTTP Methods ---
 # Route krävs, GET
 def dynamic_file_name_checker(): # Temp name
     # Ska kolla om lokal json fil finns och ladda den, annars skapa ny med webscraping. Returnerar alla böcker i kategorin.
     # Kolla: Finns kategorin? om ja, Finns den lokalt? om nej, webscrape-a.
     # Hämta sedan info om alla böcker utefter kategorin.
+
     pass
 
 # Untested, needs function gather_book_data() to test. Assumes our route category is formatted 'fantasy', 'historical-fiction' etc.
