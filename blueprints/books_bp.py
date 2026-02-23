@@ -92,34 +92,8 @@ def fetch_html(URL):
     html_code = requests.get(URL)
     soup =BeautifulSoup(html_code.text, 'html.parser')
     return soup
+    
 # --- Book Fetching !!! ---
-def book_name(URL): # WIP - Tas bort?
-    # Fetches the book title in a category
-    html_code = requests.get(URL)
-    soup_local = BeautifulSoup(html_code.text, 'html.parser')
-
-    book_data = soup_local.find('article', class_='product_pod')
-    book_title = book_data.h3.a.get('title')
-    print(book_title) # Bör bytas till return //Ella
-
-def book_price(URL):
-    html_code = requests.get(URL)
-    soup_local = BeautifulSoup(html_code.text, 'html.parser')
-
-    book_site = soup_local.find('article', class_='product_pod').find('h3').find('a', title=True)['href'] # Finds the book site link
-    book_site = book_site.replace('../', '')
-    book_site_url = f'{BASE_URL}catalogue/{book_site}' # The full URL to an individual book
-    
-    html_code = requests.get(book_site_url)
-    soup_local = BeautifulSoup(html_code.text, 'html.parser')
-
-    book_price = soup_local.find('p', class_='price_color').text
-    book_price = book_price.replace('Â£', '') # Removes the weird lettering
-    book_price = float(book_price)
-    
-    converted_book_price = f'{price_conversion(book_price)} SEK'
-    return converted_book_price
-
 def scrape_book(URL): 
     #the scraped html code
     soup = fetch_html(URL)
@@ -180,9 +154,6 @@ def gather_book_data(category_url):
 
             print("currently ",len(list_of_books)," books in the list")
             print(f"end of page {current_page}")
-            
-            for book in list_of_books:
-                print(book)
             current_page += 1 #changes what page to scrape
             #end of loop
         return list_of_books
@@ -262,18 +233,3 @@ def get_book_by_id(category, id):
             return jsonify(book)
     
     return jsonify({'error': f'Book with ID/UPC {id} not found.'}), 404
-
-
-
-# --- TESTKOD KOMMER EJ VAD MED I FINAL ---
-# Testa skriva ut alla titlar på en sida
-def print_all_books(URL):
-    html_code = requests.get(URL)
-    soup_local = BeautifulSoup(html_code.text, 'html.parser')
-
-    books = soup_local.find_all('li', class_='col-xs-6 col-sm-4 col-md-3 col-lg-3')
-
-    list_of_books = []
-    for book in range(len(books)):
-        book_title = books[book].article.h3.a.get('title')
-        print(book_title)
