@@ -19,8 +19,11 @@ soup = BeautifulSoup(html_for_BASE_URL.text, 'html.parser')
 
 # --- General Tool Functions ---
 # Page counter / checker
-def page_turner():
-    current_page_html = soup.find('li', class_='current') # Fetches the HTML code
+def page_turner(category_url):
+    html_code = requests.get(category_url)
+    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+
+    current_page_html = soup_local.find('li', class_='current') # Fetches the HTML code 
     current_page_text = current_page_html.get_text(strip=True)
     current_page_str = re.findall(r'\b\d+\b', current_page_text) # Seperates the numbers from the text, stores each number as string in a list
 
@@ -85,6 +88,8 @@ def rating_conversion(book_rating):
     }
     return rating_conversion.get(book_rating) # Returns '0-5/5' as string
 
+
+
 # --- Book Fetching !!! ---
 def book_name(URL):
     # Fetches the book title in a category
@@ -113,20 +118,77 @@ def book_price(URL):
     converted_book_price = f'{price_conversion(book_price)} SEK'
     return converted_book_price
 
-def book_rating(url):
-    # Fetches category URL, then fetches rating and converts it to 0-5/5
-    html_code = requests.get(url)
+def get_all_books_by_cat(URL): #have all the functions in the same function?? to shorten scrapetime
+    html_code = requests.get(URL)
     soup_local = BeautifulSoup(html_code.text, 'html.parser')
 
+    book_data = soup_local.find('div', class_='product_main')
+    book_title = book_data.h1.get_text()
+    
     book_rating_unconverted = soup_local.find('p', class_='star-rating')['class'][1] # Finds the second class attribute wherever it also contains 'star-rating'
     book_rating = rating_conversion(book_rating_unconverted)
-    return book_rating # Returns '0-5/5' as string
 
-def book_id(): # Book UPC
-    pass
+    product_info = soup_local.find('table', class_='table table-striped') #finds the contents of the product information table
+    id = product_info.tr.td.get_text(strip=True) #collects the text in the first row second column
 
-def gather_book_data():
-    pass
+    return book_title, book_rating, id #behöver lägga till price!!!!! //sebastian
+
+def gather_book_data(category_url):
+    try:
+        list_of_books = [] #list to hold all the data from the books in a catagory
+
+        #fetch number of pages
+        current_page, max_page = page_turner(category_url)
+
+        while current_page <= max_page:
+
+            # Fetches the HTML code for all books on the page, stores in a list.
+            # different codes depending on what URL stored in category_url
+            match current_page:
+                case 1:
+                    html_code = requests.get(category_url)
+                    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+                    books_html = soup_local.find_all('li', class_='col-xs-6 col-sm-4 col-md-3 col-lg-3') 
+                case 2:
+                    category_url = category_url[:-10] + (f"page-{current_page}.html")
+                    print(category_url)
+                    html_code = requests.get(category_url)
+                    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+                    books_html = soup_local.find_all('li', class_='col-xs-6 col-sm-4 col-md-3 col-lg-3') 
+                case _:
+                    category_url = category_url[:-11] + (f"page-{current_page}.html")
+                    print(category_url)
+                    html_code = requests.get(category_url)
+                    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+                    books_html = soup_local.find_all('li', class_='col-xs-6 col-sm-4 col-md-3 col-lg-3') 
+            
+            #loops through all the books on ONE page and adds the data to a list of dictionaries.
+            for book in books_html:
+                books_link = book.div.a.get('href') #gets the link to the book we're looking at in the category
+                book_url = f"https://books.toscrape.com/catalogue{books_link[8:]}"
+                scraped_book = get_all_books_by_cat(book_url)
+
+                #creates a dictionary and takes the different values from the webscrape
+                book_data = {
+                    'title': scraped_book[0],
+                    #'price': book_price(temp_link),
+                    'rating': scraped_book[1],
+                    'id': scraped_book[2]
+                }
+
+                #adds the collected data of A book to a list
+                list_of_books.append(book_data) 
+                print(f"finished scraping {book_data['title']}")
+
+            print("currently ",len(list_of_books)," books in the list")
+            print(f"end of page {current_page}")
+
+            current_page += 1 #changes what page to scrape
+            #end of loop
+            
+    except Exception as e:
+        print(e)
+
 
 # --- JSON Handling ---
 def load_json_file(file_name):
@@ -134,10 +196,10 @@ def load_json_file(file_name):
         data = json.load(json_file)
     return data
 
-def save_books_to_json(category): # WILL WORK when gather_book_data() works!! //Ella
+def save_books_to_json(category, category_url):
     # Saves the book data from a category into a new JSON file
     file_name = dynamic_file_name(category)
-    book_data = gather_book_data() # MAY NEED ADJUSTING //Ella
+    book_data = gather_book_data(category_url)
     if not os.path.exists(f'{file_name}.json'):
         try:
             with open(file_name, 'w', encoding='utf-8') as json_file:
@@ -146,26 +208,39 @@ def save_books_to_json(category): # WILL WORK when gather_book_data() works!! //
         except Exception as err:
             return('Unable to create JSON file.'), err
 
+
+
 # --- HTTP Methods ---
 # Route krävs, GET
 def dynamic_file_name_checker(): # Temp name
     # Ska kolla om lokal json fil finns och ladda den, annars skapa ny med webscraping. Returnerar alla böcker i kategorin.
     # Kolla: Finns kategorin? om ja, Finns den lokalt? om nej, webscrape-a.
     # Hämta sedan info om alla böcker utefter kategorin.
+
     pass
 
-# Untested, needs function gather_book_data() to test. Assumes our route category is formatted 'fantasy', 'historical-fiction' etc.
 @books_bp.route('/books/<string:category>/<string:id>', methods=['GET'])
 def get_book_by_id(category, id):
     # Fetches a book within a category by ID
     categories = get_categories()
-    if not any(f'/{category}_' in link for link in categories): # "If there isn't any '(category)_' in *any* link inside categories"
-        return jsonify({'error': f'Category {category} not found.'}), 404    
+    category_part_url = None
+
+    # Checks for a valid category link
+    for link in categories:
+        if f'/{category}_' in link:
+            category_part_url = link
+            print(category_part_url)
+            break
+    if category_part_url is None:
+        return jsonify({'error': f'Category {category} not found.'}), 404
+    
+    category_url = BASE_URL + category_part_url
+    print(category_url)
     
     # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
     file_name = dynamic_file_name(category)
     if not os.path.exists(file_name):
-        save_books_to_json(category)
+        save_books_to_json(category, category_url)
 
     if not os.path.exists(file_name): # Checks again to make sure the file was created correctly
         return jsonify({'error': 'Failed to create JSON file.'}), 500
