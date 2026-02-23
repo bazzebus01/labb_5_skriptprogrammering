@@ -42,13 +42,37 @@ def get_categories():
     return list_of_links
 
 def dynamic_file_name(category):
-    # Creates a JSON file name based on the current category and name
+    # Creates a TXT file name based on the current category and name
     today = datetime.date.today().strftime('%d%m%y')
     file_name = category + '_' + today + '.json'
-    return file_name # Returns 'category_ddmmyy.json' as string
+    return file_name # Returns 'forex_ddmmyy.json' as string
 
-def price_conversion():
-    pass
+def price_conversion(book_price):
+    # Fetches daily value exchange EUR -> SEK and converts book prices
+    today = datetime.date.today().strftime('%d%m%y')
+    file_name = 'forex_' + today + '.txt'
+
+    # File handler for value exchange
+    if not os.path.exists(f'{file_name}'):
+        try:
+            with open(file_name, 'w', encoding='utf-8') as txt_file:
+                txt = requests.get('https://www.forex.se/valuta/eur/').text
+                txt_file.write(txt)
+        except Exception as err:
+            return('Unable to create TXT file.'), err
+    try:
+        with open(file_name, 'r', encoding='utf-8') as txt_file:
+            stock_exchange = txt_file.read() 
+    except Exception as err:
+        return('Unable to open TXT file.'), err
+    
+    # Parsing
+    soup_stock_exchange = BeautifulSoup(stock_exchange, 'html.parser')
+    
+    eur_to_sek = soup_stock_exchange.find('span', class_='rate-example-list__example-list-item-to').text # Finds the converted price: 1 EUR = XX,XX SEK
+    sek_value = re.search(f'[0-9]+,[0-9]+', eur_to_sek).group() # Converts "XX,XX SEK" to "XX,XX"    
+    price_converted = round(book_price * float(sek_value.replace(',', '.')), 2) # Calculates price in SEK
+    return price_converted
 
 def rating_conversion(book_rating):
     # Book rating conversion table
@@ -62,8 +86,8 @@ def rating_conversion(book_rating):
     return rating_conversion.get(book_rating) # Returns '0-5/5' as string
 
 # --- Book Fetching !!! ---
-# Fetches the book title in a category
 def book_name(URL):
+    # Fetches the book title in a category
     html_code = requests.get(URL)
     soup_local = BeautifulSoup(html_code.text, 'html.parser')
 
@@ -71,8 +95,23 @@ def book_name(URL):
     book_title = book_data.h3.a.get('title')
     print(book_title) # Bör bytas till return //Ella
 
-def book_price():
-    pass
+def book_price(URL):
+    html_code = requests.get(URL)
+    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+
+    book_site = soup_local.find('article', class_='product_pod').find('h3').find('a', title=True)['href'] # Finds the book site link
+    book_site = book_site.replace('../', '')
+    book_site_url = f'{BASE_URL}catalogue/{book_site}' # The full URL to an individual book.
+    
+    html_code = requests.get(book_site_url)
+    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+
+    book_price = soup_local.find('p', class_='price_color').text
+    book_price = book_price.replace('Â£', '') # Hårdkodat //Ella
+    book_price = float(book_price)
+    
+    converted_book_price = f'{price_conversion(book_price)} SEK'
+    return converted_book_price
 
 def book_rating(url):
     # Fetches category URL, then fetches rating and converts it to 0-5/5
@@ -90,8 +129,10 @@ def gather_book_data():
     pass
 
 # --- JSON Handling ---
-def load_json_file():
-    pass
+def load_json_file(file_name):
+    with open(file_name, 'r', encoding='utf-8') as json_file:
+        data = json.load(json_file)
+    return data
 
 def save_books_to_json(category): # WILL WORK when gather_book_data() works!! //Ella
     # Saves the book data from a category into a new JSON file
@@ -129,9 +170,7 @@ def get_book_by_id(category, id):
     if not os.path.exists(file_name): # Checks again to make sure the file was created correctly
         return jsonify({'error': 'Failed to create JSON file.'}), 500
     
-    with open(file_name, 'r', encoding='utf-8') as json_file: # Should later be load_json_data()
-        book_data = json.load(json_file)
-
+    book_data = load_json_file(file_name)
     for book in book_data: # Searches for an ID match, returns book information
         if book['id'] == id:
             print('Book found!') # FYI, this only prints to console //Ella
