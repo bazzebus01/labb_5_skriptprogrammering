@@ -45,10 +45,10 @@ def get_categories():
     return list_of_links
 
 def dynamic_file_name(category):
-    # Creates a TXT file name based on the current category and name
+    # Creates a JSON file name based on the current category and name
     today = datetime.date.today().strftime('%d%m%y')
     file_name = category + '_' + today + '.json'
-    return file_name # Returns 'forex_ddmmyy.json' as string
+    return file_name # Returns 'category_ddmmyy.json' as string
 
 def price_conversion(book_price):
     # Fetches daily value exchange EUR -> SEK and converts book prices
@@ -91,7 +91,7 @@ def rating_conversion(book_rating):
 
 
 # --- Book Fetching !!! ---
-def book_name(URL):
+def book_name(URL): # WIP - Tas bort?
     # Fetches the book title in a category
     html_code = requests.get(URL)
     soup_local = BeautifulSoup(html_code.text, 'html.parser')
@@ -106,13 +106,13 @@ def book_price(URL):
 
     book_site = soup_local.find('article', class_='product_pod').find('h3').find('a', title=True)['href'] # Finds the book site link
     book_site = book_site.replace('../', '')
-    book_site_url = f'{BASE_URL}catalogue/{book_site}' # The full URL to an individual book.
+    book_site_url = f'{BASE_URL}catalogue/{book_site}' # The full URL to an individual book
     
     html_code = requests.get(book_site_url)
     soup_local = BeautifulSoup(html_code.text, 'html.parser')
 
     book_price = soup_local.find('p', class_='price_color').text
-    book_price = book_price.replace('Â£', '') # Hårdkodat //Ella
+    book_price = book_price.replace('Â£', '') # Removes the weird lettering
     book_price = float(book_price)
     
     converted_book_price = f'{price_conversion(book_price)} SEK'
@@ -188,7 +188,7 @@ def gather_book_data(category_url):
             
     except Exception as e:
         print(e)
-
+    return list_of_books # WIP
 
 # --- JSON Handling ---
 def load_json_file(file_name):
@@ -199,7 +199,7 @@ def load_json_file(file_name):
 def save_books_to_json(category, category_url):
     # Saves the book data from a category into a new JSON file
     file_name = dynamic_file_name(category)
-    book_data = gather_book_data(category_url)
+    book_data = gather_book_data(category_url) # WIP
     if not os.path.exists(f'{file_name}.json'):
         try:
             with open(file_name, 'w', encoding='utf-8') as json_file:
@@ -223,24 +223,22 @@ def dynamic_file_name_checker(): # Temp name
 def get_book_by_id(category, id):
     # Fetches a book within a category by ID
     categories = get_categories()
-    category_part_url = None
+    category_part_url = None # WIP
 
     # Checks for a valid category link
     for link in categories:
         if f'/{category}_' in link:
             category_part_url = link
-            print(category_part_url)
             break
     if category_part_url is None:
         return jsonify({'error': f'Category {category} not found.'}), 404
     
     category_url = BASE_URL + category_part_url
-    print(category_url)
     
     # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
     file_name = dynamic_file_name(category)
     if not os.path.exists(file_name):
-        save_books_to_json(category, category_url)
+        save_books_to_json(category, category_url) # WIP
 
     if not os.path.exists(file_name): # Checks again to make sure the file was created correctly
         return jsonify({'error': 'Failed to create JSON file.'}), 500
@@ -248,7 +246,7 @@ def get_book_by_id(category, id):
     book_data = load_json_file(file_name)
     for book in book_data: # Searches for an ID match, returns book information
         if book['id'] == id:
-            print('Book found!') # FYI, this only prints to console //Ella
+            print('Book found!')
             return jsonify(book)
     
     return jsonify({'error': f'Book with ID/UPC {id} not found.'}), 404
@@ -267,4 +265,3 @@ def print_all_books(URL):
     for book in range(len(books)):
         book_title = books[book].article.h3.a.get('title')
         print(book_title)
-
