@@ -19,8 +19,11 @@ soup = BeautifulSoup(html_for_BASE_URL.text, 'html.parser')
 
 # --- General Tool Functions ---
 # Page counter / checker
-def page_turner():
-    current_page_html = soup.find('li', class_='current') # Fetches the HTML code
+def page_turner(category_url):
+    html_code = requests.get(category_url)
+    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+
+    current_page_html = soup_local.find('li', class_='current') # Fetches the HTML code 
     current_page_text = current_page_html.get_text(strip=True)
     current_page_str = re.findall(r'\b\d+\b', current_page_text) # Seperates the numbers from the text, stores each number as string in a list
 
@@ -64,43 +67,78 @@ def rating_conversion(book_rating):
 
 
 # --- Book Fetching !!! ---
-# Fetches the book title in a category
-def book_name(URL):
+
+
+def get_all_books_by_cat(URL): #have all the functions in the same function?? to shorten scrapetime
     html_code = requests.get(URL)
     soup_local = BeautifulSoup(html_code.text, 'html.parser')
 
-    book_data = soup_local.find('article', class_='product_pod')
-    book_title = book_data.h3.a.get('title')
-    return book_title
-
-def book_price():
-    pass
-
-# Fetches category URL, then fetches rating and converts it to 0-5/5
-def book_rating(url):
-    html_code = requests.get(url)
-    soup_local = BeautifulSoup(html_code.text, 'html.parser')
-
+    book_data = soup_local.find('div', class_='product_main')
+    book_title = book_data.h1.get_text()
+    
     book_rating_unconverted = soup_local.find('p', class_='star-rating')['class'][1] # Finds the second class attribute wherever it also contains 'star-rating'
     book_rating = rating_conversion(book_rating_unconverted)
-    return book_rating # Returns '0-5/5' as string
-
-
-#fetches book UPC with the direct url to the book
-def book_id(url):
-    html_code = requests.get(url)
-    soup_local = BeautifulSoup(html_code.text, 'html.parser')
 
     product_info = soup_local.find('table', class_='table table-striped') #finds the contents of the product information table
     id = product_info.tr.td.get_text(strip=True) #collects the text in the first row second column
-    return id
 
+    return book_title, book_rating, id #behöver lägga till price!!!!! //sebastian
 
-def gather_book_data():
+def gather_book_data(category_url):
+    try:
+        list_of_books = [] #list to hold all the data from the books in a catagory
 
-# need logic to get the direct link to the book for book_id //sebastian
-    pass
+        #fetch number of pages
+        current_page, max_page = page_turner(category_url)
 
+        while current_page <= max_page:
+
+            # Fetches the HTML code for all books on the page, stores in a list.
+            # different codes depending on what URL stored in category_url
+            match current_page:
+                case 1:
+                    html_code = requests.get(category_url)
+                    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+                    books_html = soup_local.find_all('li', class_='col-xs-6 col-sm-4 col-md-3 col-lg-3') 
+                case 2:
+                    category_url = category_url[:-10] + (f"page-{current_page}.html")
+                    print(category_url)
+                    html_code = requests.get(category_url)
+                    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+                    books_html = soup_local.find_all('li', class_='col-xs-6 col-sm-4 col-md-3 col-lg-3') 
+                case _:
+                    category_url = category_url[:-11] + (f"page-{current_page}.html")
+                    print(category_url)
+                    html_code = requests.get(category_url)
+                    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+                    books_html = soup_local.find_all('li', class_='col-xs-6 col-sm-4 col-md-3 col-lg-3') 
+            
+            #loops through all the books on ONE page and adds the data to a list of dictionaries.
+            for book in books_html:
+                books_link = book.div.a.get('href') #gets the link to the book we're looking at in the category
+                book_url = f"https://books.toscrape.com/catalogue{books_link[8:]}"
+                scraped_book = get_all_books_by_cat(book_url)
+
+                #creates a dictionary and takes the different values from the webscrape
+                book_data = {
+                    'title': scraped_book[0],
+                    #'price': book_price(temp_link),
+                    'rating': scraped_book[1],
+                    'id': scraped_book[2]
+                }
+
+                #adds the collected data of A book to a list
+                list_of_books.append(book_data) 
+                print(f"finished scraping {book_data['title']}")
+
+            print("currently ",len(list_of_books)," books in the list")
+            print(f"end of page {current_page}")
+
+            current_page += 1 #changes what page to scrape
+            #end of loop
+            
+    except Exception as e:
+        print(e)
 
 
 # --- JSON Handling ---
