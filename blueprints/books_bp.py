@@ -50,8 +50,32 @@ def dynamic_file_name(category):
     file_name = category + '_' + today + '.json'
     return file_name # Returns 'category_ddmmyy.json' as string
 
-def price_conversion():
-    pass
+def price_conversion(book_price):
+    # Fetches daily value exchange EUR -> SEK and converts book prices
+    today = datetime.date.today().strftime('%d%m%y')
+    file_name = 'forex_' + today + '.txt'
+
+    # File handler for value exchange
+    if not os.path.exists(f'{file_name}'):
+        try:
+            with open(file_name, 'w', encoding='utf-8') as txt_file:
+                txt = requests.get('https://www.forex.se/valuta/eur/').text
+                txt_file.write(txt)
+        except Exception as err:
+            return('Unable to create TXT file.'), err
+    try:
+        with open(file_name, 'r', encoding='utf-8') as txt_file:
+            stock_exchange = txt_file.read() 
+    except Exception as err:
+        return('Unable to open TXT file.'), err
+    
+    # Parsing
+    soup_stock_exchange = BeautifulSoup(stock_exchange, 'html.parser')
+    
+    eur_to_sek = soup_stock_exchange.find('span', class_='rate-example-list__example-list-item-to').text # Finds the converted price: 1 EUR = XX,XX SEK
+    sek_value = re.search(f'[0-9]+,[0-9]+', eur_to_sek).group() # Converts "XX,XX SEK" to "XX,XX"    
+    price_converted = round(book_price * float(sek_value.replace(',', '.')), 2) # Calculates price in SEK
+    return price_converted
 
 def rating_conversion(book_rating):
     # Book rating conversion table
@@ -72,19 +96,28 @@ def fetch_html(URL):
 
 
 def scrape_book(URL): 
+    #the scraped html code
     soup = fetch_html(URL)
 
+    #book title 
     book_data = soup.find('div', class_='product_main')
     book_title = book_data.h1.get_text()
     
+    #book rating 
     book_rating_unconverted = soup.find('p', class_='star-rating')['class'][1] # Finds the second class attribute wherever it also contains 'star-rating'
     book_rating = rating_conversion(book_rating_unconverted)
 
-    #fetches the text in the first row, second column in the product information table
+    #book ID/UPC 
     product_info = soup.find('table', class_='table table-striped') 
     id = product_info.tr.td.get_text(strip=True) 
 
-    return book_title, book_rating, id #behöver lägga till price!!!!! //sebastian
+    #book price 
+    book_price = soup.find('p', class_='price_color').text
+    book_price = book_price.replace('Â£', '') # Removes the weird lettering
+    book_price = float(book_price)
+    converted_book_price = f'{price_conversion(book_price)} SEK'
+
+    return book_title, converted_book_price, book_rating, id #behöver lägga till price!!!!! //sebastian
 
 def gather_book_data(category_url):
     try:
@@ -92,7 +125,7 @@ def gather_book_data(category_url):
 
         #scrape number of pages for the category
         current_page, max_page = page_turner(category_url)
-        while current_page <= max_page:
+        while current_page != 2:#current_page != max_page:
             # different codes depending on what URL stored in category_url
             if re.search("index.html", category_url):
                 category_url = re.sub("index.html", f"page-{current_page}.html", category_url) #index.html -> page-X.html. used for multi-page category
@@ -111,9 +144,9 @@ def gather_book_data(category_url):
                 #creates a dictionary with the values from the book
                 book_data = {
                     'title': scraped_book[0],
-                    #'price': scraped_book[X],
-                    'rating': scraped_book[1],
-                    'id': scraped_book[2]
+                    'price': scraped_book[1],
+                    'rating': scraped_book[2],
+                    'id': scraped_book[3]
                 }
 
                 list_of_books.append(book_data) 
@@ -122,12 +155,16 @@ def gather_book_data(category_url):
 
             print("currently ",len(list_of_books)," books in the list")
             print(f"end of page {current_page}")
+            
+            for book in list_of_books:
+                print(book)
             current_page += 1 #changes what page to scrape
             #end of loop
         return list_of_books
     except Exception as e:
         print(e)
 
+gather_book_data("https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html")
 
 
 # --- JSON Handling ---
@@ -150,7 +187,7 @@ def save_books_to_json(category): # WILL WORK when gather_book_data() works!! //
 
 # --- HTTP Methods ---
 # Route krävs, GET
-def dynamic_file_name_checker(category): # Temp name
+def get_books_by_category(category): # Temp name
     # Ska kolla om lokal json fil finns och ladda den, annars skapa ny med webscraping. Returnerar alla böcker i kategorin.
     # Kolla: Finns kategorin? om ja, Finns den lokalt? om nej, webscrape-a.
     # Hämta sedan info om alla böcker utefter kategorin.
