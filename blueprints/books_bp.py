@@ -1,7 +1,7 @@
 import os, requests, json, re
 from flask import Flask, jsonify, Blueprint
 from bs4 import BeautifulSoup
-from datetime import datetime
+import datetime
 
 # Blueprint, innit?
 books_bp = Blueprint('books_bp', __name__)
@@ -41,13 +41,48 @@ def get_categories():
     for link in list_of_links:
         print(link)
 
-def price_conversion(price_text, exchange_rate=13.5): # Default exchange rate is 13.5
-    price_number = float(price_text.replace('£', ''))
-    price_in_sek = round(price_number * exchange_rate, 2)# Rounds the price to 2 decimal places
-    return price_in_sek
+def dynamic_file_name(category):
+    # Creates a TXT file name based on the current category and name
+    today = datetime.date.today().strftime('%d%m%y')
+    file_name = category + '_' + today + '.json'
+    return file_name # Returns 'forex_ddmmyy.json' as string
 
-def rating_conversion():
-    pass
+def price_conversion(book_price):
+    today = datetime.date.today().strftime('%d%m%y')
+    file_name = 'forex_' + today + '.txt'
+
+    # File handler for value exchange EUR -> SEK
+    if not os.path.exists(f'{file_name}'):
+        try:
+            with open(file_name, 'w', encoding='utf-8') as txt_file:
+                txt = requests.get('https://www.forex.se/valuta/eur/').text
+                txt_file.write(txt)
+        except Exception as err:
+            return('Unable to create TXT file.'), err
+    try:
+        with open(file_name, 'r', encoding='utf-8') as txt_file:
+            stock_exchange = txt_file.read() 
+    except Exception as err:
+        return('Unable to open TXT file.'), err
+    
+    soup_stock_exchange = BeautifulSoup(stock_exchange, 'html.parser')
+    
+    eur_to_sek = soup_stock_exchange.find('span', class_='rate-example-list__example-list-item-to').text # Finds the converted price: 1 EUR = XX,XX SEK
+    sek_value = re.search(f'[0-9]+,[0-9]+', eur_to_sek).group() # Converts "XX,XX" SEK to "XX,XX"    
+    price_converted = round(book_price * float(sek_value.replace(',', '.')), 2) # Calculates price in SEK
+
+    return price_converted
+
+def rating_conversion(book_rating):
+    # Book rating conversion table
+    rating_conversion = {
+        'One': '1/5',
+        'Two': '2/5',
+        'Three': '3/5',
+        'Four': '4/5',
+        'Five': '5/5'
+    }
+    return rating_conversion.get(book_rating) # Returns '0-5/5' as string
 
 # --- Book Fetching !!! ---
 # Fetches the book title for a category. Iterates for every book in a different function
@@ -63,12 +98,29 @@ def book_price(URL):
     html_code = requests.get(URL)
     soup_local = BeautifulSoup(html_code.text, 'html.parser')
 
-    price_text = soup_local.find('p', class_='price_color').text # Fetches the price text
-    price_number = float(price_text.replace('£', '')) # Converts the price text to a number, removes the £ symbol
-    return price_number
+    book_site = soup_local.find('article', class_='product_pod').find('h3').find('a', title=True)['href'] # Finds the book site link
+    book_site = book_site.replace('../', '')
+    book_site_url = f'{BASE_URL}catalogue/{book_site}' # The full URL to an individual book.
+    
+    html_code = requests.get(book_site_url)
+    soup_local = BeautifulSoup(html_code.text, 'html.parser')
 
-def book_rating():
-    pass
+    book_price = soup_local.find('p', class_='price_color').text
+    book_price = book_price.replace('Â£', '') # Hårdkodat //Ella
+    book_price = float(book_price) 
+    
+    converted_book_price = f'{price_conversion(book_price)} SEK'
+    print(converted_book_price)
+    return converted_book_price
+
+def book_rating(url):
+    # Fetches category URL, then fetches rating and converts it to 0-5/5
+    html_code = requests.get(url)
+    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+
+    book_rating_unconverted = soup_local.find('p', class_='star-rating')['class'][1] # Finds the second class attribute wherever it also contains 'star-rating'
+    book_rating = rating_conversion(book_rating_unconverted)
+    return book_rating # Returns '0-5/5' as string
 
 def book_id(): # Book UPC
     pass
@@ -82,8 +134,8 @@ def gather_book_data(URL):
     for book in range(len(books)):
         book_title = books[book].article.h3.a.get('title') # Fetches the title for each book, stores in a variable
         price_text = books[book].find('p', class_='price_color').text # Fetches the price text for each book, stores in a variable
-        price_number = float(price_text.replace('£', ''))  # Converts the price text to a number, removes the £ symbol
-        list_of_books.append({'title': book_title, 'price': price_number}) # Creates a dictionary for each book with the title and price, appends to the list of books
+        price_unconverted = float(price_text.replace('£', ''))  # Converts the price text to a number, removes the £ symbol
+        list_of_books.append({'title': book_title, 'price': price_unconverted}) # Creates a dictionary for each book with the title and price, appends to the list of books
 
     return list_of_books 
     
@@ -91,24 +143,23 @@ def gather_book_data(URL):
 
 
 # --- JSON Handling ---
-def load_json_file(filename): #checks if file exists, if not creates it and returns empty list
-    if not os.path.exists(filename):
-        with open(filename, 'w', encoding='utf-8') as file:
-            json.dump([], file)
-        return []
-    #skrek på mej om jag tog något annat än filename, send help
+def load_json_file(file_name): #checks if file exists, if not creates it and returns empty list
+   with open (file_name, 'r', encoding='utf-8') as json_file:
+        data = json.load(json_file)
+        return data
 
-    try: # If the file exists, try to load it and return the data
-        with open(filename, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-            return data
-    except json.JSONDecodeError: # If the file is empty or contains invalid JSON, return an empty list
-        return []
 
-    pass
-
-def save_books_to_json():
-    pass
+def save_books_to_json(category): # WILL WORK when gather_book_data() works!! //Ella
+    # Saves the book data from a category into a new JSON file
+    file_name = dynamic_file_name(category)
+    book_data = gather_book_data # MAY NEED ADJUSTING //Ella
+    if not os.path.exists(f'{file_name}.json'):
+        try:
+            with open(file_name, 'w', encoding='utf-8') as json_file:
+                json.dump(book_data, json_file, ensure_ascii=False, indent=4)
+            return book_data # Returns all book data as a list with dicts within
+        except Exception as err:
+            return('Unable to create JSON file.'), err
 
 # --- HTTP Methods ---
 # Route krävs, GET
@@ -118,28 +169,31 @@ def dynamic_file_name_checker(): # Temp name
     # Hämta sedan info om alla böcker utefter kategorin.
     pass
 
-# Route krävs, GET ID
-def dynamic_book_id_checker(): # Temp name
-    # Kollar baserat på ID och kategori. Bör också kolla lokalt i första hand, annars webscrape-a.
-    # Kolla: Finns kategorin? om ja, Finns den lokalt? om nej, webscrape-a.
-    # Hämta sedan info om boken utefter UPC (ID)
-    pass
+@books_bp.route('/books/<string:category>/<string:id>', methods=['GET'])
+def get_book_by_id(category, id):
+    # Fetches a book within a category by ID
+    categories = get_categories()
+    if not any(f'/{category}_' in link for link in categories): # "If there isn't any '(category)_' in *any* link inside categories"
+        return jsonify({'error': f'Category {category} not found.'}), 404    
+    
+    # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
+    file_name = dynamic_file_name(category)
+    if not os.path.exists(file_name):
+        save_books_to_json(category)
+
+    if not os.path.exists(file_name): # Checks again to make sure the file was created correctly
+        return jsonify({'error': 'Failed to create JSON file.'}), 500
+    
+    data = load_json_file(file_name)
+
+    for book in data: # Searches for an ID match, returns book information
+        if book['id'] == id:
+            print('Book found!') # FYI, this only prints to console //Ella
+            return jsonify(book)
+    
+    return jsonify({'error': f'Book with ID/UPC {id} not found.'}), 404
 
 
+save_books_to_json('fantasty')
+#print(data)
 
-
-
-
-# --- TESTKOD KOMMER EJ VAD MED I FINAL ---
-# Testa skriva ut alla titlar på en sida
-def print_all_books(URL):
-    html_code = requests.get(URL)
-    soup_local = BeautifulSoup(html_code.text, 'html.parser')
-    books = soup_local.find_all('li', class_='col-xs-6 col-sm-4 col-md-3 col-lg-3')
-
-    list_of_books = []
-    for book in range(len(books)):
-        book_title = books[book].article.h3.a.get('title')
-        print(book_title)
-
-print_all_books('https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html')
