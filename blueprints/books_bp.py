@@ -55,28 +55,36 @@ def price_conversion(book_price):
     today = datetime.date.today().strftime('%d%m%y')
     file_name = 'forex_' + today + '.txt'
 
+    # Removes all old txt forex files
+    for txt_file in os.listdir('.'):
+        if txt_file.startswith('forex_') and txt_file.endswith('.txt') and txt_file != file_name:
+            os.remove(txt_file) # Removes all 'forex_*.txt' not matching today's date
+
     # File handler for value exchange
-    if not os.path.exists(f'{file_name}'):
+    if not os.path.exists(f'{file_name}'):            
+        # Webscapes conversion EUR -> SEK
         try:
             with open(file_name, 'w', encoding='utf-8') as txt_file:
                 html_local = requests.get('https://www.forex.se/valuta/eur/')
                 soup_local = BeautifulSoup(html_local.text, 'html.parser')
                 content = soup_local.find('span', class_='rate-example-list__example-list-item-to') # Finds converted price ONLY in the HTML
                 content = str(content) # Converts the BS4 tag to a text string
-                txt_file.write(content)
+                txt_file.write(content) # Writes it to a txt file
         except Exception as err:
             return('Unable to create TXT file.'), err
+    
+    # Opens the txt file and saves it to price_exchange
     try:
         with open(file_name, 'r', encoding='utf-8') as txt_file:
-            stock_exchange = txt_file.read() 
+            price_exchange = txt_file.read() 
     except Exception as err:
         return('Unable to open TXT file.'), err
     
     # Parsing
-    soup_stock_exchange = BeautifulSoup(stock_exchange, 'html.parser')
-    eur_to_sek = soup_stock_exchange.find('span', class_='rate-example-list__example-list-item-to').text # Finds the converted price: 1 EUR = XX,XX SEK
+    soup_price_exchange = BeautifulSoup(price_exchange, 'html.parser')
+    eur_to_sek = soup_price_exchange.find('span', class_='rate-example-list__example-list-item-to').text # Finds the converted price
     sek_value = re.search(f'[0-9]+,[0-9]+', eur_to_sek).group() # Converts "XX,XX SEK" to "XX,XX"    
-    price_converted = round(book_price * float(sek_value.replace(',', '.')), 2) # Calculates price in SEK
+    price_converted = round(book_price * float(sek_value.replace(',', '.')), 2) # Calculates price from the book in SEK
     return price_converted
 
 def rating_conversion(book_rating):
@@ -187,10 +195,10 @@ def save_books_to_json(category, category_url):
 def get_all_books_by_cat(category):
     # Fetches all books by category
     categories = get_categories()
-    category_parturl = None
+    category_part_url = None
     # Checks for a valid category link
     for link in categories:
-        if f'/{category}' in link:
+        if f'/{category}_' in link:
             category_part_url = link
             break
     if category_part_url is None:
@@ -213,20 +221,21 @@ def get_all_books_by_cat(category):
 def get_book_by_id(category, id):
     # Checks for a valid category link
     categories = get_categories()
-    category_parturl = None
+    category_part_url = None
+
     for link in categories:
-        if f'/{category}' in link:
+        if f'/{category}_' in link:
             category_part_url = link
             break
     if category_part_url is None:
         return jsonify({'error': f'Category {category} not found.'}), 404
 
-    category_url = BASE_URL + category_part_url
+    category_url = BASE_URL + category_part_url # Returns homepage URL + the full category URL (e.g. /category/fantasy_8/index.html)
 
     # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
     file_name = dynamic_file_name(category)
     if not os.path.exists(file_name):
-        save_books_to_json(category, category_url) # WIP
+        save_books_to_json(category, category_url)
 
     if not os.path.exists(file_name): # Checks again to make sure the file was created correctly
         return jsonify({'error': 'Failed to create JSON file.'}), 500
@@ -240,7 +249,7 @@ def get_book_by_id(category, id):
             return render_template('category_html.html', books=temp_book_list)
     return jsonify({'error': f'Book with ID/UPC {id} not found.'}), 404
 
-# ELLAS CRUD PUT
+# UPDATE
 @books_bp.route('/books/<string:category>/<string:id>', methods=['PUT'])
 def update_book(category, id):
     # Required fields
@@ -259,7 +268,8 @@ def update_book(category, id):
             break
     if category_part_url is None:
         return jsonify({'error': f'Category {category} not found.'}), 404
-    category_url = BASE_URL + category_part_url
+    
+    category_url = BASE_URL + category_part_url # Returns homepage URL + the full category URL (e.g. /category/fantasy_8/index.html)
     
     # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
     file_name = dynamic_file_name(category)
