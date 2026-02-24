@@ -1,5 +1,5 @@
 import os, requests, json, re
-from flask import Flask, jsonify, Blueprint
+from flask import Flask, jsonify, Blueprint, request
 from bs4 import BeautifulSoup
 import datetime
 
@@ -59,8 +59,11 @@ def price_conversion(book_price):
     if not os.path.exists(f'{file_name}'):
         try:
             with open(file_name, 'w', encoding='utf-8') as txt_file:
-                txt = requests.get('https://www.forex.se/valuta/eur/').text
-                txt_file.write(txt)
+                html_local = requests.get('https://www.forex.se/valuta/eur/')
+                soup_local = BeautifulSoup(html_local.text, 'html.parser')
+                content = soup_local.find('span', class_='rate-example-list__example-list-item-to') # Finds converted price ONLY in the HTML
+                content = str(content) # Converts the BS4 tag to a text string
+                txt_file.write(content)
         except Exception as err:
             return('Unable to create TXT file.'), err
     try:
@@ -71,7 +74,6 @@ def price_conversion(book_price):
     
     # Parsing
     soup_stock_exchange = BeautifulSoup(stock_exchange, 'html.parser')
-    
     eur_to_sek = soup_stock_exchange.find('span', class_='rate-example-list__example-list-item-to').text # Finds the converted price: 1 EUR = XX,XX SEK
     sek_value = re.search(f'[0-9]+,[0-9]+', eur_to_sek).group() # Converts "XX,XX SEK" to "XX,XX"    
     price_converted = round(book_price * float(sek_value.replace(',', '.')), 2) # Calculates price in SEK
@@ -116,7 +118,7 @@ def scrape_book(URL):
     book_price = float(book_price)
     converted_book_price = f'{price_conversion(book_price)} SEK'
 
-    return book_title, converted_book_price, book_rating, id #behöver lägga till price!!!!! //sebastian
+    return book_title, converted_book_price, book_rating, id
 
 def gather_book_data(category_url):
     try:
@@ -124,7 +126,7 @@ def gather_book_data(category_url):
 
         #scrape number of pages for the category
         current_page, max_page = page_turner(category_url)
-        while current_page != 2:#current_page != max_page:
+        while current_page <= max_page:
             # different codes depending on what URL stored in category_url
             if re.search("index.html", category_url):
                 category_url = re.sub("index.html", f"page-{current_page}.html", category_url) #index.html -> page-X.html. used for multi-page category
@@ -156,10 +158,9 @@ def gather_book_data(category_url):
             print(f"end of page {current_page}")
             current_page += 1 #changes what page to scrape
             #end of loop
-        return list_of_books
     except Exception as e:
         print(e)
-    return list_of_books # WIP
+    return list_of_books
 
 # --- JSON Handling ---
 def load_json_file(file_name):
@@ -201,12 +202,11 @@ def get_books_by_category(category): # Temp name
     except Exception as e:
         print(e)
         
-# Untested, needs function gather_book_data() to test. Assumes our route category is formatted 'fantasy', 'historical-fiction' etc.
 @books_bp.route('/books/<string:category>/<string:id>', methods=['GET'])
 def get_book_by_id(category, id):
     # Fetches a book within a category by ID
     categories = get_categories()
-    category_part_url = None # WIP
+    category_part_url = None
 
     # Checks for a valid category link
     for link in categories:
@@ -221,7 +221,7 @@ def get_book_by_id(category, id):
     # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
     file_name = dynamic_file_name(category)
     if not os.path.exists(file_name):
-        save_books_to_json(category, category_url) # WIP
+        save_books_to_json(category, category_url)
 
     if not os.path.exists(file_name): # Checks again to make sure the file was created correctly
         return jsonify({'error': 'Failed to create JSON file.'}), 500
@@ -230,6 +230,48 @@ def get_book_by_id(category, id):
     for book in book_data: # Searches for an ID match, returns book information
         if book['id'] == id:
             print('Book found!')
-            return jsonify(book)
+            return jsonify(book), 200
     
+    return jsonify({'error': f'Book with ID/UPC {id} not found.'}), 404
+
+# ELLAS CRUD PUT
+@books_bp.route('/books/<string:category>/<string:id>', methods=['PUT'])
+def update_book(category, id):
+    # Updates book information
+    categories = get_categories()
+    category_part_url = None
+
+    # Checks for a valid category link
+    for link in categories: # WIP - kan refaktoriseras?
+        if f'/{category}_' in link:
+            category_part_url = link
+            break
+    if category_part_url is None:
+        return jsonify({'error': f'Category {category} not found.'}), 404
+    
+    category_url = BASE_URL + category_part_url
+    
+    # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
+    file_name = dynamic_file_name(category)
+    if not os.path.exists(file_name):
+        save_books_to_json(category, category_url)
+
+    if not os.path.exists(file_name): # Checks again to make sure the file was created correctly
+        return jsonify({'error': 'Failed to create JSON file.'}), 500
+    
+    book_data = load_json_file(file_name)
+    updated_book = request.json
+
+    # Required fields
+    required_fields = ['title', 'price', 'rating', 'id']
+    if not all(field in updated_book for field in required_fields): # Checks if all required fields are present in the request JSON
+        return jsonify({'error': 'Missing required fields'})
+    
+    for book in book_data: # Searches for an ID match, updates book based on request
+        if book['id'] == id:
+            book.update(updated_book) # Updates the correct book
+            with open(file_name, 'w') as json_file:
+                json.dump(book_data, json_file, indent=4)
+            return jsonify({'result': 'updated', 'updated book': book}), 201
+
     return jsonify({'error': f'Book with ID/UPC {id} not found.'}), 404
