@@ -18,7 +18,7 @@ def page_turner(category_url):
         current_page_html = soup_local.find('li', class_='current') # Fetches the HTML code 
         current_page_text = current_page_html.get_text(strip=True)
         current_page_str = re.findall(r'\b\d+\b', current_page_text) # Seperates the numbers from the text, stores each number as string in a list
-    except:
+    except: # Runs if the category only has one page
         current_page = 1
         total_pages = 1
         return current_page, total_pages
