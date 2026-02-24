@@ -1,2 +1,3 @@
 forex_*.txt
 *.json
+__pycache__/
