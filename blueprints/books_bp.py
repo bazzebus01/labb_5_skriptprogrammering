@@ -1,11 +1,11 @@
 import os, requests, json, re
-from flask import Flask, jsonify, Blueprint
+from flask import render_template, jsonify, Blueprint
 from flask import request
 from bs4 import BeautifulSoup
 import datetime
 
 # Blueprint init
-books_bp = Blueprint('books_bp', __name__)
+books_bp = Blueprint('books_bp', __name__, template_folder='templates')
 
 # URL things
 BASE_URL = "https://books.toscrape.com/"
@@ -203,24 +203,31 @@ def save_books_to_json(category, category_url):
 
 
 # --- HTTP Methods ---
-# Route krävs, GET
-def get_books_by_category(category): # Temp name
-    # Ska kolla om lokal json fil finns och ladda den, annars skapa ny med webscraping. Returnerar alla böcker i kategorin.
-    # Kolla: Finns kategorin? om ja, Finns den lokalt? om nej, webscrape-a.
-    # Hämta sedan info om alla böcker utefter kategorin.
+@books_bp.route('/books/<string:category>', methods=['GET'])
+def get_all_books_by_cat(category):
+    # Fetches all books by category
+    categories = get_categories()
+    category_part_url = None
+    # Checks for a valid category link
+    for link in categories:
+        if f'/{category}_' in link:
+            category_part_url = link
+            break
+    if category_part_url is None:
+        return jsonify({'error': f'Category {category} not found.'}), 404
+    
+    category_url = BASE_URL + category_part_url
+    
+    # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
+    file_name = dynamic_file_name(category)
+    if not os.path.exists(file_name):
+        save_books_to_json(category, category_url) # WIP
 
-    #attempt 1: //sebastian
-    try:
-        
-        if os.path.exists(f"../{category}_{datetime.datetime.now().strftime('%d%m%y')}"): #if the path with the category input with todays date
-            pass 
-        else:
-            #look if category exist
-            #scrape category of books
-            pass
-
-    except Exception as e:
-        print(e)
+    if not os.path.exists(file_name): # Checks again to make sure the file was created correctly
+        return jsonify({'error': 'Failed to create JSON file.'}), 500
+    
+    book_data = load_json_file(file_name)
+    return render_template('category_html.html', books=book_data)
         
 # Untested, needs function gather_book_data() to test. Assumes our route category is formatted 'fantasy', 'historical-fiction' etc.
 @books_bp.route('/books/<string:category>/<string:id>', methods=['GET'])
@@ -278,3 +285,21 @@ def create_book(category):
 
     return jsonify(new_book), 201 # Returns the newly created book data as JSON with a 201 Created status code
 
+
+
+@books_bp.route('/books/<string:category>', methods=['DELETE'])
+def delete_category(category):
+    file_name = dynamic_file_name(category) # Checks for local file
+
+    if not os.path.exists(file_name):
+        return jsonify({'error': f'Category {category} does not exist.'}), 404
+
+    try:
+        os.remove(file_name) # Deletes the JSON file associated with the category, effectively "deleting" the category data
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500 # Returns a 500 Internal Server Error with the exception message if file deletion fails
+
+    return jsonify({
+        'message': 'Category deleted successfully',
+        'deleted_category': category
+    }), 200
