@@ -6,19 +6,15 @@ from .books_functions import *
 # Blueprint init
 books_bp = Blueprint('books_bp', __name__, template_folder='templates')
 
-# WIP --- Vet ej om detta ska vara kvar?
 BASE_URL = "https://books.toscrape.com/"
-html_for_BASE_URL = requests.get(BASE_URL)
-soup = BeautifulSoup(html_for_BASE_URL.text, 'html.parser')
-# WIP --- Vet ej om detta ska vara kvar?
 
 # --- HTTP Methods ---
+# GET: By category
 @books_bp.route('/books/<string:category>', methods=['GET'])
 def get_all_books_by_cat(category):
-    # Fetches all books by category
+    # Checks for a valid category link
     categories = get_categories()
     category_part_url = None
-    # Checks for a valid category link
     for link in categories:
         if f'/{category}_' in link:
             category_part_url = link
@@ -38,7 +34,8 @@ def get_all_books_by_cat(category):
 
     book_data = load_json_file(file_name)
     return render_template('category_html.html', books=book_data)
-        
+
+# GET: By ID        
 @books_bp.route('/books/<string:category>/<string:id>', methods=['GET'])
 def get_book_by_id(category, id):
     # Checks for a valid category link
@@ -180,7 +177,7 @@ def delete_category(category):
     }), 200    
 
 # DELETE: All OLD JSON files for a category
-@books_bp.route('/books/<string:category>', methods=['DELETE'])
+@books_bp.route('/books/delete/<string:category>', methods=['DELETE'])
 def delete_old_files(category):
     # Checks for a valid category
     categories = get_categories()

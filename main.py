@@ -1,7 +1,4 @@
-import os, requests, json, re
-from flask import Flask, jsonify, app
-from bs4 import BeautifulSoup
-from datetime import datetime
+from flask import Flask, app
 from blueprints.books_bp import books_bp
 
 app = Flask(__name__)
