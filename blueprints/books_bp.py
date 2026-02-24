@@ -1,5 +1,6 @@
 import os, requests, json, re
 from flask import Flask, jsonify, Blueprint
+from flask import request
 from bs4 import BeautifulSoup
 import datetime
 
@@ -118,6 +119,26 @@ def scrape_book(URL):
 
     return book_title, converted_book_price, book_rating, id #behöver lägga till price!!!!! //sebastian
 
+def book_price(URL):
+    html_code = requests.get(URL)
+    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+
+    book_site = soup_local.find('article', class_='product_pod').find('h3').find('a', title=True)['href'] # Finds the book site link
+    book_site = book_site.replace('../', '')
+    book_site_url = f'{BASE_URL}catalogue/{book_site}' # The full URL to an individual book.
+    
+    html_code = requests.get(book_site_url)
+    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+
+    book_price = soup_local.find('p', class_='price_color').text
+    book_price = book_price.replace('Â£', '') # Hårdkodat //Ella
+    book_price = float(book_price) 
+    
+    converted_book_price = f'{price_conversion(book_price)} SEK'
+    print(converted_book_price)
+    return converted_book_price
+
+
 def gather_book_data(category_url):
     try:
         list_of_books = [] #list to hold the dictionaries in.
@@ -233,3 +254,27 @@ def get_book_by_id(category, id):
             return jsonify(book)
     
     return jsonify({'error': f'Book with ID/UPC {id} not found.'}), 404
+
+@books_bp.route('/books/<string:category>', methods=['POST'])
+def create_book(category):
+    file_name = dynamic_file_name(category) # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
+
+    if not os.path.exists(file_name):
+        save_books_to_json(category)
+
+    data = load_json_file(file_name)
+
+    new_book = request.json # Expects a JSON object with the same structure as the existing books
+
+    
+    required_fields = ['title', 'price', 'rating', 'id']
+    if not all(field in new_book for field in required_fields): # Checks if all required fields are present in the request JSON
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    data.append(new_book) # Adds the new book to the existing data list
+
+    with open(file_name, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4)
+
+    return jsonify(new_book), 201 # Returns the newly created book data as JSON with a 201 Created status code
+
