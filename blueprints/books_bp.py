@@ -272,30 +272,6 @@ def get_book_by_id(category, id):
             return render_template('category_html.html', books=temp_book_list)    
     return jsonify({'error': f'Book with ID/UPC {id} not found.'}), 404
 
-@books_bp.route('/books/<string:category>', methods=['POST'])
-def create_book(category):
-    file_name = dynamic_file_name(category) # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
-
-    if not os.path.exists(file_name):
-        save_books_to_json(category)
-
-    data = load_json_file(file_name)
-
-    new_book = request.json # Expects a JSON object with the same structure as the existing books
-
-    
-    required_fields = ['title', 'price', 'rating', 'id']
-    if not all(field in new_book for field in required_fields): # Checks if all required fields are present in the request JSON
-        return jsonify({'error': 'Missing required fields'}), 400
-
-    data.append(new_book) # Adds the new book to the existing data list
-
-    with open(file_name, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=4)
-
-    return jsonify(new_book), 201 # Returns the newly created book data as JSON with a 201 Created status code
-
-
 # POST
 @books_bp.route('/books/<string:category>', methods=['POST'])
 def create_book(category):
@@ -319,6 +295,48 @@ def create_book(category):
         json.dump(data, f, indent=4)
 
     return jsonify(new_book), 201 # Returns the newly created book data as JSON with a 201 Created status code
+
+# PUT
+@books_bp.route('/books/<string:category>/<string:id>', methods=['PUT'])
+def update_book(category, id):
+    # Required fields
+    updated_book = request.json
+    required_fields = ['title', 'price', 'rating', 'id']
+    if not all(field in updated_book for field in required_fields): # Checks if all required fields are present in the request JSON
+        return jsonify({'error': 'Missing required fields'})
+
+    # Checks for a valid category link
+    categories = get_categories()
+    category_part_url = None
+
+    for link in categories:
+        if f'/{category}_' in link:
+            category_part_url = link
+            break
+    if category_part_url is None:
+        return jsonify({'error': f'Category {category} not found.'}), 404
+    
+    category_url = BASE_URL + category_part_url # Returns homepage URL + the full category URL (e.g. /category/fantasy_8/index.html)
+    
+    # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
+    file_name = dynamic_file_name(category)
+    if not os.path.exists(file_name):
+        save_books_to_json(category, category_url)
+
+    # Checks again to make sure the file was created correctly
+    if not os.path.exists(file_name):
+        return jsonify({'error': 'Failed to create JSON file.'}), 500
+    
+    # Book updating
+    book_data = load_json_file(file_name)
+    for book in book_data: # Searches for an ID match, updates book based on request
+        if book['id'] == id:
+            book.update(updated_book) # Updates the correct book
+            with open(file_name, 'w') as json_file:
+                json.dump(book_data, json_file, indent=4)
+            return jsonify({'result': 'Updated', 'Updated book': book}), 201
+
+    return jsonify({'error': f'Book with ID/UPC {id} not found.'}), 404
 
 # Delete book from category
 @books_bp.route('/books/<string:category>/<string:id>', methods=['DELETE'])
@@ -362,3 +380,18 @@ def delete_category(category):
         'message': 'Category deleted successfully',
         'deleted_category': category
     }), 200
+
+# DELETE: All old JSON files for a category
+@books_bp.route('/books/delete/<string:category>', methods=['DELETE'])
+def delete_old_files(category):
+    # Checks for a valid category
+    categories = get_categories()
+    if not any(f'/{category}_' in link for link in categories):
+        return jsonify({'error': f'Category {category} not found.'}), 404
+    
+    # Finds all JSON files within the category not matching today's date
+    file_name = dynamic_file_name(category)
+    for json_file in os.listdir('.'):
+        if json_file.startswith(f'{category}_') and json_file.endswith('.json') and json_file != file_name:
+            os.remove(json_file) # Removes all JSON files for the category not matching today's date
+    return jsonify({'result': f'All old files in the category {category} have been deleted.'}), 200

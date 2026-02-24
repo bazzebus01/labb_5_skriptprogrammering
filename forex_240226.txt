@@ -1,3 +1,0 @@
-<span class="rate-example-list__example-list-item-to">
-                              11,40 SEK
-                        </span>
