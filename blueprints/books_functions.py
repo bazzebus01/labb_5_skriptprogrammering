@@ -9,17 +9,19 @@ BASE_URL = "https://books.toscrape.com/"
 html_for_BASE_URL = requests.get(BASE_URL)
 soup = BeautifulSoup(html_for_BASE_URL.text, 'html.parser')
 
-
-
 # --- General Tool Functions ---
 # Page counter / checker
 def page_turner(category_url):
     html_code = requests.get(category_url)
     soup_local = BeautifulSoup(html_code.text, 'html.parser')
-
-    current_page_html = soup_local.find('li', class_='current') # Fetches the HTML code 
-    current_page_text = current_page_html.get_text(strip=True)
-    current_page_str = re.findall(r'\b\d+\b', current_page_text) # Seperates the numbers from the text, stores each number as string in a list
+    try:
+        current_page_html = soup_local.find('li', class_='current') # Fetches the HTML code 
+        current_page_text = current_page_html.get_text(strip=True)
+        current_page_str = re.findall(r'\b\d+\b', current_page_text) # Seperates the numbers from the text, stores each number as string in a list
+    except:
+        current_page = 1
+        total_pages = 1
+        return current_page, total_pages
 
     # Converts the page numbers from strings to int
     # Seperates the current page from the total pages
@@ -56,10 +58,9 @@ def price_conversion(book_price):
 
     # File handler for value exchange
     if not os.path.exists(f'{file_name}'):            
-        # Webscapes conversion EUR -> SEK
         try:
             with open(file_name, 'w', encoding='utf-8') as txt_file:
-                html_local = requests.get('https://www.forex.se/valuta/eur/')
+                html_local = requests.get('https://www.forex.se/valuta/eur/') # Webscrapes conversion from Forex
                 soup_local = BeautifulSoup(html_local.text, 'html.parser')
                 content = soup_local.find('span', class_='rate-example-list__example-list-item-to') # Finds converted price ONLY in the HTML
                 content = str(content) # Converts the BS4 tag to a text string
@@ -122,6 +123,7 @@ def scrape_book(URL):
 
     return book_title, converted_book_price, book_rating, id
 
+
 def gather_book_data(category_url):
     try:
         list_of_books = [] #list to hold the dictionaries in.
@@ -130,13 +132,15 @@ def gather_book_data(category_url):
         current_page, max_page = page_turner(category_url)
         while current_page <= max_page:
             # different codes depending on what URL stored in category_url
-            if re.search("index.html", category_url):
-                category_url = re.sub("index.html", f"page-{current_page}.html", category_url) #index.html -> page-X.html. used for multi-page category
-            elif re.search(f"page-{current_page-1}.html", category_url): #runs if the the URL has the same pagenumber as the last ran current_page varibable value
-                category_url = re.sub(f"page-{current_page-1}.html", f"page-{current_page}.html", category_url) #turns the page to the next 1 -> 2
+            if max_page > 1:
+                if re.search("index.html", category_url):
+                    category_url = re.sub("index.html", f"page-{current_page}.html", category_url) #index.html -> page-X.html. used for multi-page category                    
+                elif re.search(f"page-{current_page-1}.html", category_url): #runs if the the URL has the same pagenumber as the last ran current_page varibable value
+                    category_url = re.sub(f"page-{current_page-1}.html", f"page-{current_page}.html", category_url) #turns the page to the next 1 -> 2
 
             soup = fetch_html(category_url)
             books_html = soup.find_all('li', class_='col-xs-6 col-sm-4 col-md-3 col-lg-3')
+            print(category_url)
 
             #loops through all the books on ONE page and adds the data to a list of dictionaries.
             for book in books_html:
@@ -160,9 +164,10 @@ def gather_book_data(category_url):
             print(f"end of page {current_page}")
             current_page += 1 #changes what page to scrape
             #end of loop
+        return list_of_books
     except Exception as e:
-        print(e)
-    return list_of_books
+        print("something went wrong!\n",e)
+
 
 # --- JSON Handling ---
 def load_json_file(file_name):
