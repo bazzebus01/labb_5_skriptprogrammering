@@ -8,7 +8,7 @@ books_bp = Blueprint('books_bp', __name__)
 
 # URL things
 BASE_URL = "https://books.toscrape.com/"
-CATEGORY_URL = None
+CATEGORY_URL = None # WIP - Används ej?
 full_url = f"{BASE_URL}{CATEGORY_URL}"
 
 # Code to get access to the html data
@@ -237,18 +237,22 @@ def get_book_by_id(category, id):
 # ELLAS CRUD PUT
 @books_bp.route('/books/<string:category>/<string:id>', methods=['PUT'])
 def update_book(category, id):
-    # Updates book information
-    categories = get_categories()
-    category_part_url = None
+    # Required fields
+    updated_book = request.json
+    required_fields = ['title', 'price', 'rating', 'id']
+    if not all(field in updated_book for field in required_fields): # Checks if all required fields are present in the request JSON
+        return jsonify({'error': 'Missing required fields'})
 
     # Checks for a valid category link
-    for link in categories: # WIP - kan refaktoriseras?
+    categories = get_categories()
+    category_part_url = None
+    
+    for link in categories:
         if f'/{category}_' in link:
             category_part_url = link
             break
     if category_part_url is None:
         return jsonify({'error': f'Category {category} not found.'}), 404
-    
     category_url = BASE_URL + category_part_url
     
     # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
@@ -256,22 +260,17 @@ def update_book(category, id):
     if not os.path.exists(file_name):
         save_books_to_json(category, category_url)
 
-    if not os.path.exists(file_name): # Checks again to make sure the file was created correctly
+    # Checks again to make sure the file was created correctly
+    if not os.path.exists(file_name):
         return jsonify({'error': 'Failed to create JSON file.'}), 500
     
+    # Book updating
     book_data = load_json_file(file_name)
-    updated_book = request.json
-
-    # Required fields
-    required_fields = ['title', 'price', 'rating', 'id']
-    if not all(field in updated_book for field in required_fields): # Checks if all required fields are present in the request JSON
-        return jsonify({'error': 'Missing required fields'})
-    
     for book in book_data: # Searches for an ID match, updates book based on request
         if book['id'] == id:
             book.update(updated_book) # Updates the correct book
             with open(file_name, 'w') as json_file:
                 json.dump(book_data, json_file, indent=4)
-            return jsonify({'result': 'updated', 'updated book': book}), 201
+            return jsonify({'result': 'Updated', 'Updated book': book}), 201
 
     return jsonify({'error': f'Book with ID/UPC {id} not found.'}), 404
