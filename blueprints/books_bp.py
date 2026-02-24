@@ -1,5 +1,6 @@
 import os, requests, json, re
 from flask import Flask, jsonify, Blueprint
+from flask import request
 from bs4 import BeautifulSoup
 import datetime
 
@@ -100,9 +101,16 @@ def get_all_books_by_cat(URL): #have all the functions in the same function?? to
     html_code = requests.get(URL)
     soup_local = BeautifulSoup(html_code.text, 'html.parser')
 
-    book_data = soup_local.find('article', class_='product_pod')
-    book_title = book_data.h3.a.get('title')
-    print(book_title)
+    book_data = soup_local.find('div', class_='product_main')
+    book_title = book_data.h1.get_text()
+    
+    book_rating_unconverted = soup_local.find('p', class_='star-rating')['class'][1] # Finds the second class attribute wherever it also contains 'star-rating'
+    book_rating = rating_conversion(book_rating_unconverted)
+
+    product_info = soup_local.find('table', class_='table table-striped') #finds the contents of the product information table
+    id = product_info.tr.td.get_text(strip=True) #collects the text in the first row second column
+
+    return book_title, book_rating, id #behöver lägga till price!!!!! //sebastian
 
 def book_price(URL):
     html_code = requests.get(URL)
@@ -123,44 +131,6 @@ def book_price(URL):
     print(converted_book_price)
     return converted_book_price
 
-def book_rating(url):
-    # Fetches category URL, then fetches rating and converts it to 0-5/5
-    html_code = requests.get(url)
-    soup_local = BeautifulSoup(html_code.text, 'html.parser')
-
-    book_rating_unconverted = soup_local.find('p', class_='star-rating')['class'][1] # Finds the second class attribute wherever it also contains 'star-rating'
-    book_rating = rating_conversion(book_rating_unconverted)
-    return book_rating # Returns '0-5/5' as string
-
-def book_id(): # Book UPC
-    pass
-
-def gather_book_data(URL):
-    html_code = requests.get(URL)
-    soup_local = BeautifulSoup(html_code.text, 'html.parser')
-
-    books = soup_local.find_all('li', class_='col-xs-6 col-sm-4 col-md-3 col-lg-3') # Fetches the HTML code for all books on the page, stores in a list
-    list_of_books = []
-    for book in range(len(books)):
-        book_title = books[book].article.h3.a.get('title') # Fetches the title for each book, stores in a variable
-        price_text = books[book].find('p', class_='price_color').text # Fetches the price text for each book, stores in a variable
-        price_unconverted = float(price_text.replace('£', ''))  # Converts the price text to a number, removes the £ symbol
-        list_of_books.append({'title': book_title, 'price': price_unconverted}) # Creates a dictionary for each book with the title and price, appends to the list of books
-
-    return list_of_books 
-    
-
-
-    book_data = soup_local.find('div', class_='product_main')
-    book_title = book_data.h1.get_text()
-    
-    book_rating_unconverted = soup_local.find('p', class_='star-rating')['class'][1] # Finds the second class attribute wherever it also contains 'star-rating'
-    book_rating = rating_conversion(book_rating_unconverted)
-
-    product_info = soup_local.find('table', class_='table table-striped') #finds the contents of the product information table
-    id = product_info.tr.td.get_text(strip=True) #collects the text in the first row second column
-
-    return book_title, book_rating, id #behöver lägga till price!!!!! //sebastian
 
 def gather_book_data(category_url):
     try:
@@ -200,7 +170,7 @@ def gather_book_data(category_url):
                 #creates a dictionary and takes the different values from the webscrape
                 book_data = {
                     'title': scraped_book[0],
-                    #'price': book_price(temp_link),
+                    'price': book_price(temp_link),
                     'rating': scraped_book[1],
                     'id': scraped_book[2]
                 }
@@ -275,18 +245,26 @@ def get_book_by_id(category, id):
     
     return jsonify({'error': f'Book with ID/UPC {id} not found.'}), 404
 
+@books_bp.route('/books/<string:category>', methods=['POST'])
+def create_book(category):
+    file_name = dynamic_file_name(category) # Checks for local file, if it doesn't exist it webscrapes and stores the data in a new JSON file
 
+    if not os.path.exists(file_name):
+        save_books_to_json(category)
 
-# --- TESTKOD KOMMER EJ VAD MED I FINAL ---
-# Testa skriva ut alla titlar på en sida
-def print_all_books(URL):
-    html_code = requests.get(URL)
-    soup_local = BeautifulSoup(html_code.text, 'html.parser')
+    data = load_json_file(file_name)
 
-    books = soup_local.find_all('li', class_='col-xs-6 col-sm-4 col-md-3 col-lg-3')
+    new_book = request.json # Expects a JSON object with the same structure as the existing books
 
-    list_of_books = []
-    for book in range(len(books)):
-        book_title = books[book].article.h3.a.get('title')
-        print(book_title)
+    
+    required_fields = ['title', 'price', 'rating', 'id']
+    if not all(field in new_book for field in required_fields): # Checks if all required fields are present in the request JSON
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    data.append(new_book) # Adds the new book to the existing data list
+
+    with open(file_name, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4)
+
+    return jsonify(new_book), 201 # Returns the newly created book data as JSON with a 201 Created status code
 
